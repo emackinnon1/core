@@ -33,8 +33,8 @@ class AuroraDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
         self.api = api
-        self.latitude = int(latitude)
-        self.longitude = int(longitude)
+        self.latitude = float(latitude)
+        self.longitude = float(longitude)
         self.threshold = int(threshold)
 
     async def _async_update_data(self):
