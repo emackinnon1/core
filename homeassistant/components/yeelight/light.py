@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Coroutine
 import logging
 import math
-from typing import Any
+from typing import Any, Concatenate, ParamSpec, TypeVar
 
 import voluptuous as vol
 import yeelight
@@ -66,6 +67,10 @@ from .const import (
 from .device import YeelightDevice
 from .entity import YeelightEntity
 
+_YeelightBaseLightT = TypeVar("_YeelightBaseLightT", bound="YeelightBaseLight")
+_R = TypeVar("_R")
+_P = ParamSpec("_P")
+
 _LOGGER = logging.getLogger(__name__)
 
 ATTR_MINUTES = "minutes"
@@ -105,6 +110,7 @@ EFFECT_SUNSET = "Sunset"
 EFFECT_ROMANCE = "Romance"
 EFFECT_HAPPY_BIRTHDAY = "Happy Birthday"
 EFFECT_CANDLE_FLICKER = "Candle Flicker"
+EFFECT_TEA_TIME = "Tea Time"
 
 YEELIGHT_TEMP_ONLY_EFFECT_LIST = [EFFECT_TEMP, EFFECT_STOP]
 
@@ -118,6 +124,7 @@ YEELIGHT_MONO_EFFECT_LIST = [
     EFFECT_TWITTER,
     EFFECT_HOME,
     EFFECT_CANDLE_FLICKER,
+    EFFECT_TEA_TIME,
     *YEELIGHT_TEMP_ONLY_EFFECT_LIST,
 ]
 
@@ -162,6 +169,7 @@ EFFECTS_MAP = {
     EFFECT_ROMANCE: flows.romance,
     EFFECT_HAPPY_BIRTHDAY: flows.happy_birthday,
     EFFECT_CANDLE_FLICKER: flows.candle_flicker,
+    EFFECT_TEA_TIME: flows.tea_time,
 }
 
 VALID_BRIGHTNESS = vol.All(vol.Coerce(int), vol.Range(min=1, max=100))
@@ -235,10 +243,14 @@ def _parse_custom_effects(effects_config) -> dict[str, dict[str, Any]]:
     return effects
 
 
-def _async_cmd(func):
+def _async_cmd(
+    func: Callable[Concatenate[_YeelightBaseLightT, _P], Coroutine[Any, Any, _R]],
+) -> Callable[Concatenate[_YeelightBaseLightT, _P], Coroutine[Any, Any, _R | None]]:
     """Define a wrapper to catch exceptions from the bulb."""
 
-    async def _async_wrap(self: YeelightBaseLight, *args, **kwargs):
+    async def _async_wrap(
+        self: _YeelightBaseLightT, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _R | None:
         for attempts in range(2):
             try:
                 _LOGGER.debug("Calling %s with %s %s", func, args, kwargs)
@@ -266,6 +278,7 @@ def _async_cmd(func):
                     f"Error when calling {func.__name__} for bulb "
                     f"{self.device.name} at {self.device.host}: {str(ex) or type(ex)}"
                 ) from ex
+        return None
 
     return _async_wrap
 

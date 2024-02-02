@@ -49,7 +49,9 @@ from homeassistant.setup import async_setup_component
 from tests.common import async_capture_events, get_fixture_path
 
 
-async def test_default_state(hass: HomeAssistant) -> None:
+async def test_default_state(
+    hass: HomeAssistant, entity_registry: er.EntityRegistry
+) -> None:
     """Test light group default state."""
     hass.states.async_set("light.kitchen", "on")
     await async_setup_component(
@@ -80,7 +82,6 @@ async def test_default_state(hass: HomeAssistant) -> None:
     assert state.attributes.get(ATTR_EFFECT_LIST) is None
     assert state.attributes.get(ATTR_EFFECT) is None
 
-    entity_registry = er.async_get(hass)
     entry = entity_registry.async_get("light.bedroom_group")
     assert entry
     assert entry.unique_id == "unique_identifier"
@@ -278,6 +279,9 @@ async def test_brightness(
 
     entity1 = platform.ENTITIES[1]
     entity1.supported_features = SUPPORT_BRIGHTNESS
+    # Set color modes to none to trigger backwards compatibility in LightEntity
+    entity1.supported_color_modes = None
+    entity1.color_mode = None
 
     assert await async_setup_component(
         hass,
@@ -349,6 +353,9 @@ async def test_color_hs(hass: HomeAssistant, enable_custom_integrations: None) -
 
     entity1 = platform.ENTITIES[1]
     entity1.supported_features = SUPPORT_COLOR
+    # Set color modes to none to trigger backwards compatibility in LightEntity
+    entity1.supported_color_modes = None
+    entity1.color_mode = None
 
     assert await async_setup_component(
         hass,
@@ -697,6 +704,9 @@ async def test_color_temp(
 
     entity1 = platform.ENTITIES[1]
     entity1.supported_features = SUPPORT_COLOR_TEMP
+    # Set color modes to none to trigger backwards compatibility in LightEntity
+    entity1.supported_color_modes = None
+    entity1.color_mode = None
 
     assert await async_setup_component(
         hass,
@@ -837,6 +847,9 @@ async def test_min_max_mireds(
 
     entity1 = platform.ENTITIES[1]
     entity1.supported_features = SUPPORT_COLOR_TEMP
+    # Set color modes to none to trigger backwards compatibility in LightEntity
+    entity1.supported_color_modes = None
+    entity1.color_mode = None
     entity1._attr_min_color_temp_kelvin = 1
     entity1._attr_max_color_temp_kelvin = 1234567890
 
@@ -1014,6 +1027,9 @@ async def test_supported_color_modes(
 
     entity2 = platform.ENTITIES[2]
     entity2.supported_features = SUPPORT_BRIGHTNESS
+    # Set color modes to none to trigger backwards compatibility in LightEntity
+    entity2.supported_color_modes = None
+    entity2.color_mode = None
 
     assert await async_setup_component(
         hass,

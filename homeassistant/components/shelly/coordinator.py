@@ -7,12 +7,11 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Generic, TypeVar, cast
 
-import aioshelly
 from aioshelly.ble import async_ensure_ble_enabled, async_stop_scanner
 from aioshelly.block_device import BlockDevice, BlockUpdateType
+from aioshelly.const import MODEL_NAMES, MODEL_VALVE
 from aioshelly.exceptions import DeviceConnectionError, InvalidAuthError, RpcCallError
 from aioshelly.rpc_device import RpcDevice, RpcUpdateType
-from awesomeversion import AwesomeVersion
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import ATTR_DEVICE_ID, CONF_HOST, EVENT_HOMEASSISTANT_STOP
@@ -32,7 +31,6 @@ from .const import (
     ATTR_DEVICE,
     ATTR_GENERATION,
     BATTERY_DEVICES_WITH_PERMANENT_CONNECTION,
-    BLE_MIN_VERSION,
     CONF_BLE_SCANNER_MODE,
     CONF_SLEEP_PERIOD,
     DATA_CONFIG_ENTRY,
@@ -58,7 +56,11 @@ from .const import (
     UPDATE_PERIOD_MULTIPLIER,
     BLEScannerMode,
 )
-from .utils import device_update_info, get_rpc_device_wakeup_period
+from .utils import (
+    get_device_entry_gen,
+    get_rpc_device_wakeup_period,
+    update_device_fw_info,
+)
 
 _DeviceT = TypeVar("_DeviceT", bound="BlockDevice|RpcDevice")
 
@@ -134,9 +136,9 @@ class ShellyCoordinatorBase(DataUpdateCoordinator[None], Generic[_DeviceT]):
             name=self.name,
             connections={(CONNECTION_NETWORK_MAC, self.mac)},
             manufacturer="Shelly",
-            model=aioshelly.const.MODEL_NAMES.get(self.model, self.model),
+            model=MODEL_NAMES.get(self.model, self.model),
             sw_version=self.sw_version,
-            hw_version=f"gen{self.device.gen} ({self.model})",
+            hw_version=f"gen{get_device_entry_gen(self.entry)} ({self.model})",
             configuration_url=f"http://{self.entry.data[CONF_HOST]}",
         )
         self.device_id = device_entry.id
@@ -219,7 +221,7 @@ class ShellyBlockCoordinator(ShellyCoordinatorBase[BlockDevice]):
 
             # Shelly TRV sends information about changing the configuration for no
             # reason, reloading the config entry is not needed for it.
-            if self.model == "SHTRV-01":
+            if self.model == MODEL_VALVE:
                 self._last_cfg_changed = None
 
             # For dual mode bulbs ignore change if it is due to mode/effect change
@@ -295,8 +297,6 @@ class ShellyBlockCoordinator(ShellyCoordinatorBase[BlockDevice]):
             raise UpdateFailed(f"Error fetching data: {repr(err)}") from err
         except InvalidAuthError:
             self.entry.async_start_reauth(self.hass)
-        else:
-            device_update_info(self.hass, self.device, self.entry)
 
     @callback
     def _async_handle_update(
@@ -376,16 +376,13 @@ class ShellyRestCoordinator(ShellyCoordinatorBase[BlockDevice]):
 
             if self.device.status["uptime"] > 2 * REST_SENSORS_UPDATE_INTERVAL:
                 return
-            old_firmware = self.device.firmware_version
             await self.device.update_shelly()
-            if self.device.firmware_version == old_firmware:
-                return
         except DeviceConnectionError as err:
             raise UpdateFailed(f"Error fetching data: {repr(err)}") from err
         except InvalidAuthError:
             self.entry.async_start_reauth(self.hass)
         else:
-            device_update_info(self.hass, self.device, self.entry)
+            update_device_fw_info(self.hass, self.device, self.entry)
 
 
 class ShellyRpcCoordinator(ShellyCoordinatorBase[RpcDevice]):
@@ -533,7 +530,7 @@ class ShellyRpcCoordinator(ShellyCoordinatorBase[RpcDevice]):
         LOGGER.debug("Reconnecting to Shelly RPC Device - %s", self.name)
         try:
             await self.device.initialize()
-            device_update_info(self.hass, self.device, self.entry)
+            update_device_fw_info(self.hass, self.device, self.entry)
         except DeviceConnectionError as err:
             raise UpdateFailed(f"Device disconnected: {repr(err)}") from err
         except InvalidAuthError:
@@ -588,16 +585,8 @@ class ShellyRpcCoordinator(ShellyCoordinatorBase[RpcDevice]):
         ble_scanner_mode = self.entry.options.get(
             CONF_BLE_SCANNER_MODE, BLEScannerMode.DISABLED
         )
-        if ble_scanner_mode == BLEScannerMode.DISABLED:
+        if ble_scanner_mode == BLEScannerMode.DISABLED and self.connected:
             await async_stop_scanner(self.device)
-            return
-        if AwesomeVersion(self.device.version) < BLE_MIN_VERSION:
-            LOGGER.error(
-                "BLE not supported on device %s with firmware %s; upgrade to %s",
-                self.name,
-                self.device.version,
-                BLE_MIN_VERSION,
-            )
             return
         if await async_ensure_ble_enabled(self.device):
             # BLE enable required a reboot, don't bother connecting
@@ -619,6 +608,8 @@ class ShellyRpcCoordinator(ShellyCoordinatorBase[RpcDevice]):
             self.hass.async_create_task(self._async_disconnected())
         elif update_type is RpcUpdateType.STATUS:
             self.async_set_updated_data(None)
+            if self.sleep_period:
+                update_device_fw_info(self.hass, self.device, self.entry)
         elif update_type is RpcUpdateType.EVENT and (event := self.device.event):
             self._async_device_event_handler(event)
 

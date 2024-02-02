@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.climate import (
+    ATTR_HVAC_MODE,
     ATTR_TARGET_TEMP_HIGH,
     ATTR_TARGET_TEMP_LOW,
     ClimateEntity,
@@ -55,10 +56,10 @@ async def async_setup_entry(
                 unit_of_measurement=UnitOfTemperature.CELSIUS,
                 preset=None,
                 current_temperature=22,
-                fan_mode="On High",
+                fan_mode="on_high",
                 target_humidity=67,
                 current_humidity=54,
-                swing_mode="Off",
+                swing_mode="off",
                 hvac_mode=HVACMode.COOL,
                 hvac_action=HVACAction.COOLING,
                 aux=False,
@@ -72,12 +73,12 @@ async def async_setup_entry(
                 target_temperature=None,
                 unit_of_measurement=UnitOfTemperature.CELSIUS,
                 preset="home",
-                preset_modes=["home", "eco"],
+                preset_modes=["home", "eco", "away"],
                 current_temperature=23,
-                fan_mode="Auto Low",
+                fan_mode="auto_low",
                 target_humidity=None,
                 current_humidity=None,
-                swing_mode="Auto",
+                swing_mode="auto",
                 hvac_mode=HVACMode.HEAT_COOL,
                 hvac_action=None,
                 aux=None,
@@ -258,6 +259,8 @@ class DemoClimate(ClimateEntity):
         ):
             self._target_temperature_high = kwargs.get(ATTR_TARGET_TEMP_HIGH)
             self._target_temperature_low = kwargs.get(ATTR_TARGET_TEMP_LOW)
+        if (hvac_mode := kwargs.get(ATTR_HVAC_MODE)) is not None:
+            self._hvac_mode = hvac_mode
         self.async_write_ha_state()
 
     async def async_set_humidity(self, humidity: int) -> None:
